@@ -9,7 +9,7 @@ import (
     "sync"
 )
 
-type Student struct {
+type Learner struct {
     ID      int    `json:"id"`
     Name    string `json:"name"`
     Age     int    `json:"age"`
@@ -18,134 +18,133 @@ type Student struct {
 }
 
 var (
-    students = make(map[int]Student)
-    mu       sync.Mutex
-    nextID   = 1
+    learnerRecords = make(map[int]Learner)
+    recordLock     sync.Mutex
+    currentID      = 1
 )
 
-// Create a new student
-func createStudent(w http.ResponseWriter, r *http.Request) {
-    var student Student
-    json.NewDecoder(r.Body).Decode(&student)
+// Register a new learner
+func registerLearner(w http.ResponseWriter, r *http.Request) {
+    var learner Learner
+    json.NewDecoder(r.Body).Decode(&learner)
 
-    mu.Lock()
-    student.ID = nextID
-    students[nextID] = student
-    nextID++
-    mu.Unlock()
+    recordLock.Lock()
+    learner.ID = currentID
+    learnerRecords[currentID] = learner
+    currentID++
+    recordLock.Unlock()
 
-    json.NewEncoder(w).Encode(student)
+    json.NewEncoder(w).Encode(learner)
 }
 
-// Get all students
-func getStudents(w http.ResponseWriter, r *http.Request) {
-    mu.Lock()
-    defer mu.Unlock()
+// Retrieve all learners
+func listLearners(w http.ResponseWriter, r *http.Request) {
+    recordLock.Lock()
+    defer recordLock.Unlock()
 
-    var result []Student
-    for _, student := range students {
-        result = append(result, student)
+    var learners []Learner
+    for _, learner := range learnerRecords {
+        learners = append(learners, learner)
     }
-    json.NewEncoder(w).Encode(result)
+    json.NewEncoder(w).Encode(learners)
 }
 
-// Get a student by ID
-func getStudentByID(w http.ResponseWriter, r *http.Request) {
-    id, err := strconv.Atoi(r.URL.Path[len("/students/"):])
+// Retrieve learner details by ID
+func fetchLearnerByID(w http.ResponseWriter, r *http.Request) {
+    id, err := strconv.Atoi(r.URL.Path[len("/learners/"):])
     if err != nil {
-        http.Error(w, "Invalid student ID", http.StatusBadRequest)
+        http.Error(w, "Invalid ID", http.StatusBadRequest)
         return
     }
 
-    mu.Lock()
-    student, exists := students[id]
-    mu.Unlock()
+    recordLock.Lock()
+    learner, found := learnerRecords[id]
+    recordLock.Unlock()
 
-    if !exists {
-        http.Error(w, "Student not found", http.StatusNotFound)
+    if !found {
+        http.Error(w, "Learner not found", http.StatusNotFound)
         return
     }
 
-    json.NewEncoder(w).Encode(student)
+    json.NewEncoder(w).Encode(learner)
 }
 
-// Generate a summary for a student by ID
-func getStudentSummary(w http.ResponseWriter, r *http.Request) {
-    id, err := strconv.Atoi(r.URL.Path[len("/students/summary/"):])
+// Create or retrieve a summary for a learner by ID
+func fetchLearnerSummary(w http.ResponseWriter, r *http.Request) {
+    id, err := strconv.Atoi(r.URL.Path[len("/learners/summary/"):])
     if err != nil {
-        http.Error(w, "Invalid student ID", http.StatusBadRequest)
+        http.Error(w, "Invalid ID", http.StatusBadRequest)
         return
     }
 
-    mu.Lock()
-    student, exists := students[id]
-    mu.Unlock()
+    recordLock.Lock()
+    learner, found := learnerRecords[id]
+    recordLock.Unlock()
 
-    if !exists {
-        http.Error(w, "Student not found", http.StatusNotFound)
+    if !found {
+        http.Error(w, "Learner not found", http.StatusNotFound)
         return
     }
 
-    // Generate summary if not already present
-    if student.Summary == "" {
-        student.Summary, _ = generateProfileSummary(student)
-        mu.Lock()
-        students[id] = student // Update student map with the summary
-        mu.Unlock()
+    if learner.Summary == "" {
+        learner.Summary = generateSummary(learner)
+        recordLock.Lock()
+        learnerRecords[id] = learner
+        recordLock.Unlock()
     }
 
-    json.NewEncoder(w).Encode(map[string]string{"summary": student.Summary})
+    json.NewEncoder(w).Encode(map[string]string{"summary": learner.Summary})
 }
 
-// Dummy function for summary generation
-func generateProfileSummary(student Student) (string, error) {
-    return fmt.Sprintf("Student %s, age %d, email %s", student.Name, student.Age, student.Email), nil
+// Summary generation helper
+func generateSummary(learner Learner) string {
+    return fmt.Sprintf("Learner %s, Age: %d, Contact: %s", learner.Name, learner.Age, learner.Email)
 }
 
-// Update a student by ID
-func updateStudentByID(w http.ResponseWriter, r *http.Request) {
-    id, err := strconv.Atoi(r.URL.Path[len("/students/"):])
+// Update learner information by ID
+func updateLearnerByID(w http.ResponseWriter, r *http.Request) {
+    id, err := strconv.Atoi(r.URL.Path[len("/learners/"):])
     if err != nil {
-        http.Error(w, "Invalid student ID", http.StatusBadRequest)
+        http.Error(w, "Invalid ID", http.StatusBadRequest)
         return
     }
 
-    var updatedStudent Student
-    json.NewDecoder(r.Body).Decode(&updatedStudent)
+    var updatedLearner Learner
+    json.NewDecoder(r.Body).Decode(&updatedLearner)
 
-    mu.Lock()
-    student, exists := students[id]
-    if exists {
-        updatedStudent.ID = student.ID
-        students[id] = updatedStudent
+    recordLock.Lock()
+    learner, found := learnerRecords[id]
+    if found {
+        updatedLearner.ID = learner.ID
+        learnerRecords[id] = updatedLearner
     }
-    mu.Unlock()
+    recordLock.Unlock()
 
-    if !exists {
-        http.Error(w, "Student not found", http.StatusNotFound)
+    if !found {
+        http.Error(w, "Learner not found", http.StatusNotFound)
         return
     }
 
-    json.NewEncoder(w).Encode(updatedStudent)
+    json.NewEncoder(w).Encode(updatedLearner)
 }
 
-// Delete a student by ID
-func deleteStudentByID(w http.ResponseWriter, r *http.Request) {
-    id, err := strconv.Atoi(r.URL.Path[len("/students/"):])
+// Delete a learner by ID
+func deleteLearnerByID(w http.ResponseWriter, r *http.Request) {
+    id, err := strconv.Atoi(r.URL.Path[len("/learners/"):])
     if err != nil {
-        http.Error(w, "Invalid student ID", http.StatusBadRequest)
+        http.Error(w, "Invalid ID", http.StatusBadRequest)
         return
     }
 
-    mu.Lock()
-    _, exists := students[id]
-    if exists {
-        delete(students, id)
+    recordLock.Lock()
+    _, found := learnerRecords[id]
+    if found {
+        delete(learnerRecords, id)
     }
-    mu.Unlock()
+    recordLock.Unlock()
 
-    if !exists {
-        http.Error(w, "Student not found", http.StatusNotFound)
+    if !found {
+        http.Error(w, "Learner not found", http.StatusNotFound)
         return
     }
 
@@ -153,39 +152,38 @@ func deleteStudentByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-    http.HandleFunc("/students", func(w http.ResponseWriter, r *http.Request) {
+    http.HandleFunc("/learners", func(w http.ResponseWriter, r *http.Request) {
         switch r.Method {
         case "POST":
-            createStudent(w, r)
+            registerLearner(w, r)
         case "GET":
-            getStudents(w, r)
+            listLearners(w, r)
         default:
-            http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+            http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
         }
     })
 
-    http.HandleFunc("/students/", func(w http.ResponseWriter, r *http.Request) {
+    http.HandleFunc("/learners/", func(w http.ResponseWriter, r *http.Request) {
         switch r.Method {
         case "GET":
-            getStudentByID(w, r)
+            fetchLearnerByID(w, r)
         case "PUT":
-            updateStudentByID(w, r)
+            updateLearnerByID(w, r)
         case "DELETE":
-            deleteStudentByID(w, r)
+            deleteLearnerByID(w, r)
         default:
-            http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+            http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
         }
     })
 
-    // Summary route
-    http.HandleFunc("/students/summary/", func(w http.ResponseWriter, r *http.Request) {
+    http.HandleFunc("/learners/summary/", func(w http.ResponseWriter, r *http.Request) {
         if r.Method == "GET" {
-            getStudentSummary(w, r)
+            fetchLearnerSummary(w, r)
         } else {
-            http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+            http.Error(w, "Unsupported method", http.StatusMethodNotAllowed)
         }
     })
 
-    fmt.Println("Server is running on port 8080")
+    fmt.Println("Server listening on port 8080")
     log.Fatal(http.ListenAndServe(":8080", nil))
 }
